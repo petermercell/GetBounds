@@ -1,55 +1,98 @@
 # GetBounds
-nuke realtime auto-crop node. Determines correct bbox of input nodes in real-time!
 
-NOTE: this node hijacks the validation stage of a node tree and forces it to draw the entire frame above it. As such, it is generally designed to be used directly after a read. If it is placed further down in the tree, the UI may lock up while this node forces the nodes above it to render the entire frame.
+A C++ plugin for Foundry's Nuke that automatically determines the true bounding box of an image in real-time. GetBounds scans pixel data across selected channels and crops the bounding box to fit only the non-zero region — useful for optimising downstream operations by eliminating unnecessary empty space.
 
-tested on Windows 10, Nuke 12.1v2
+Originally created by [Michael Millspaugh](http://www.tks-designs.com). Compiled and redistributed for modern Nuke versions by [Peter Mercell](https://petermercell.com).
 
-# Build on Windows
+## How It Works
 
-build on windows:
-(built using VisualStudio 2019)
+GetBounds hooks into Nuke's validation stage to read the full input frame and find the tightest axis-aligned bounding box that contains all non-zero pixels. It walks each row left-to-right and right-to-left across the selected channels to determine the horizontal and vertical extents, then sets the output bounding box accordingly.
 
-CL:
-Environment Variables passed to tool:
-      VS_UNICODE_OUTPUT=2016
-C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.16.27023\bin\HostX86\x64\CL.exe /c /I"C:\Program Files\Nuke12.1v2\include" /Zi /nologo /W3 /WX- /diagnostics:classic /O2 /Oi /GL /D WIN32 /D NDEBUG /D _WINDOWS /D _USRDLL /D FN_OS_WINDOWS /D _WINDLL /D _MBCS /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"x64\Release\vc141.pdb" /Gd /TP /FC /errorReport:prompt GetBounds.cpp
+> **Note:** Because GetBounds forces a full-frame render during validation, it is designed to be placed **directly after a Read node**. Placing it further down a heavy node tree may cause the UI to lock up while the upstream nodes are forced to render.
 
-Link:
-Environment Variables passed to tool:
-     VS_UNICODE_OUTPUT=2028
-C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.16.27023\bin\HostX86\x64\link.exe /ERRORREPORT:PROMPT /OUT:"[OUTPUT_Folder]\GetBounds.dll" /INCREMENTAL:NO /NOLOGO /LIBPATH:"C:\Program Files\Nuke12.1v2" DDImage.lib glew32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG:FULL /PDB:"[OUTPUT_FOLDER]\GetBounds.pdb" /OPT:REF /OPT:ICF /LTCG:incremental /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"[OUTPUT_FOLDER]\GetBounds.lib" /MACHINE:X64 /DLL x64\Release\ShiftRGB.obj
+## Knobs
 
-# Build on Linux
-linux compilation requirements (based on CentOS 7):
+| Knob | Description |
+|---|---|
+| **channels** | Which channels to scan for non-zero pixels |
+| **black outside** | Clamp pixels outside the computed bbox to black |
+| **ignore <0** | Ignore negative pixel values when computing bounds |
+| **extra** | Pixel padding added around the detected bounding box |
 
-mesa-libGL-devel
+## Installation
 
-mesa-libGLU-devel
+Pre-compiled plugins are available in the `LINUX/`, `MAC/`, and `WIN/` folders for supported Nuke versions.
 
-libXi-devel
+1. Download the appropriate file for your platform and Nuke version:
+   - Linux: `LINUX/<version>/GetBounds.so`
+   - macOS: `MAC/<version>/GetBounds.dylib`
+   - Windows: `WIN/<version>/GetBounds.dll`
+2. Copy the file to your `~/.nuke/` directory or any path in your `NUKE_PATH`.
+3. In Nuke, create the node via the tab menu by typing `GetBounds`.
 
-libXmu-devel
+### Supported Nuke Versions
 
-freeglut-devel.x86_64
+| Version | Linux | macOS | Windows |
+|---|:---:|:---:|:---:|
+| 14.1v8 | ✓ | — | ✓ |
+| 15.0v8 | ✓ | ✓ | ✓ |
+| 15.1v10 | ✓ | ✓ | ✓ |
+| 15.2 | ✓ | ✓ | ✓ |
+| 16.0v6 | ✓ | ✓ | ✓ |
+| 16.1v1 | ✓ | ✓ | ✓ |
+| 17.0v1 | ✓ | ✓ | ✓ |
 
-Used the scl devtoolset-6 environment to build. to install:
-yum install -y centos-release-scl                       
-curl -sSL https://raw.githubusercontent.com/wwfxuk/centos-vault-scl/master/activate.sh | sudo sh
-yum install -y devtoolset-6
+## Building from Source
 
-then to activate the devtoolset-6 environment:
-scl enable devtoolset-6 bash
+GetBounds uses CMake with platform-specific configuration files. The source is in `src/`.
 
-finally, to build:
+### Linux
 
+```bash
 mkdir build && cd build
+cp ../CMakeLists_LINUX.txt CMakeLists.txt
+cmake . -DNUKE_VERSION=17.0v1 -DCMAKE_INSTALL_PREFIX=~/.nuke
+make && make install
+```
 
-Nuke_DIR=/path/toNuke cmake ..
+### macOS
 
-make
+```bash
+mkdir build && cd build
+cp ../CMakeLists_MAC.txt CMakeLists.txt
+cmake . -DNUKE_VERSION=17.0v1 -DCMAKE_INSTALL_PREFIX=~/.nuke
+make && make install
+```
 
-#Install
-Simply copy the .dll/.so file somewhere into your NUKE_PLUGIN_PATH. To see the node, right-click in the node graph and do "Other -> Update" then type in "GetBounds" in the tab menu.
+### Windows
 
+```cmd
+mkdir build && cd build
+copy ..\CMakeLists_WIN.txt CMakeLists.txt
+cmake . -G "Visual Studio 17 2022" -A x64 -DNUKE_VERSION=17.0v1 -DCMAKE_INSTALL_PREFIX=%USERPROFILE%\.nuke
+cmake --build . --config Release
+cmake --install .
+```
 
+Set `-DNUKE_VERSION` to match your installed Nuke version. Nuke is expected at `/opt/Nuke<version>` on Linux, `/Applications/Nuke<version>` on macOS, or `C:\Program Files\Nuke<version>` on Windows (see the respective CMakeLists file for details).
+
+## Repository Structure
+
+```
+├── src/
+│   ├── GetBounds.cpp      # Plugin source
+│   └── Bounds.h           # Plugin header
+├── LINUX/                 # Pre-compiled .so files
+├── MAC/                   # Pre-compiled .dylib files
+├── WIN/                   # Pre-compiled .dll files
+├── CMakeLists_LINUX.txt   # Linux build configuration
+├── CMakeLists_MAC.txt     # macOS build configuration
+├── CMakeLists_WIN.txt     # Windows build configuration
+├── GetBounds.nk           # Example Nuke script
+└── README.md
+```
+
+## Credits
+
+- **Original author:** [Michael Millspaugh](http://www.tks-designs.com)
+- **Compiled for modern Nuke versions by:** [Peter Mercell](https://petermercell.com)
